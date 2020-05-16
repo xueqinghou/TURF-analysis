@@ -1,0 +1,230 @@
+---
+title: "YoghurtCase"
+author: "Team 4"
+date: "2/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+############ SQL CODE ############
+
+# Load the dataset retailer1
+use retailer1;
+
+# Show all the tables we can leverage in the dataset
+show tables; 
+
+# Extract data with classification as GREEK, flavors, and sum of sales of each flavor from itemsAttributes table and storeItemSales table 
+select Class, Flavor1, sum(Sales) from itemsAttributes join storeItemSales on itemsAttributes.`Item.Num` = storeItemSales.`Item.Num`
+where Class = "GREEK"
+group by Flavor1; 
+
+# Extract data with classification as REGULAR, flavors, and sum of sales of each flavor from itemsAttributes table and storeItemSales table
+select Class, Flavor1, sum(Sales) from itemsAttributes join storeItemSales on itemsAttributes.`Item.Num` = storeItemSales.`Item.Num`
+where Class = "REGULAR"
+group by Flavor1;
+
+# Time serise analysis: Sales of Greek yogurt increased the most in 2011
+select Week_Ending, Class, Flavor1, sum(Sales) from itemsAttributes join storeItemSales on itemsAttributes.`Item.Num` = storeItemSales.`Item.Num`
+where Class = "GREEK"
+group by Flavor1, Week_Ending;
+
+# Unit analysis: Sum of units of each flavor
+select Class, Flavor1, sum(Units) from itemsAttributes join storeItemSales
+on itemsAttributes.`Item.Num` = storeItemSales.`Item.Num`
+where Class = 'GREEK'
+group by Flavor1;
+
+#After extracting and saving data in a .csv file: For Greek Yoghurt - Greekdata.csv and for Regular Yoghurt - RegularData.cs
+
+install.packages("knitr")
+library("knitr")
+install.packages("ggplot2")
+library("ggplot2")
+
+```{r QUESTION1, echo=TRUE}
+#Loading the relevant data
+library(readr)
+GreekData <- read.csv("Lovett/GreekData.csv")
+
+
+#Renaming columns appropriately
+colnames(GreekData)[1] <- "Class"
+colnames(GreekData)[2] <- "Flavor"
+colnames(GreekData)[3] <- "Sales"
+
+#Finding flavors by percentage sold
+total <- sum(GreekData$Sales)
+GreekData$percentages <- (GreekData$Sales/total)*100
+
+#Plotting bar plot for visualisation
+bp <- ggplot(GreekData, aes(x=reorder(Flavor, -percentages), y=percentages, fill=Flavor))+
+  geom_bar(width = 1, stat = "identity")
+bp
+```
+
+
+```{r QUESTION 2, echo=TRUE}
+#Loading the relevant data
+library(readr)
+RegularData <- read.csv("Lovett/RegularData.csv")
+
+
+#Renaming columns appropriately
+colnames(RegularData)[1] <- "Class"
+colnames(RegularData)[2] <- "Flavor"
+colnames(RegularData)[3] <- "Sales"
+
+#Finding flavors by percentage sold
+total <- sum(RegularData$Sales)
+RegularData$percentages <- (RegularData$Sales/total)*100
+
+#Plotting bar plot for visualisation
+bp <- ggplot(RegularData, aes(x=reorder(Flavor, -percentages), y=percentages, fill=Flavor))+
+  geom_bar(width = 1, stat = "identity")
+bp
+
+```
+```{r Top 10 Regular , echo=TRUE}
+
+#Better visualisation of top 10 flavors 
+RegularData.Top <- RegularData[order(-RegularData$percentages),]
+RegularData.Top <- RegularData.Top[1:10,]
+bp <- ggplot(RegularData.Top, aes(x=reorder(Flavor, -percentages), y=percentages, fill=Flavor))+
+  geom_bar(width = 1, stat = "identity")
+bp
+```
+
+```{r QUESTION 3, echo=TRUE}
+
+df <- read.csv("~/Desktop/design/hm2/survResponses.csv")
+Greek = df[df$Q2_1 == '100', ] #we only want to know the popular flavors among greek yogurt. 
+flavor = Greek[,15:37]
+
+df2 <- data.frame(
+                  often=integer(), 
+                 sometime=integer(), 
+                 never = integer(),
+                 stringsAsFactors=FALSE) 
+
+par(mfrow=c(4,6));
+for(j in 1:23){
+  x =flavor[,j]
+  if(is.numeric(x)){
+    hist(x,main=names(flavor)[j])
+   df2[j,] = table(x)
+  } else {
+    plot(x,main=names(flavor)[j])
+    df2[j,] = table(x)
+  }
+}
+
+df2[order(-df2$often),]
+
+```
+From the chart above, we can find that blueberry,respberry and strawberry are the most famous flavor.Chai and maple are the Least popular flavors.
+
+```{r QUESTION 4, echo=TRUE}
+## TURF analysis #######
+##### TURF function ######
+measReach = function(data){
+  if(is.null(dim(data))){ #if data is a vector
+    ret = sum(data>0,na.rm=TRUE)/length(data)
+  } else if(ncol(data)==1){ #if data has only one column
+    ret = sum(data>0,na.rm=TRUE)/length(data)
+  }
+  else { #if data has multiple columns
+    ret = sum(apply(data>0,1,any),na.rm=TRUE)/nrow(data)
+  }
+}
+
+evalNext = function(nextSet,set,data,measure=measReach){
+  vals = numeric(length(nextSet)) #set up storage for return value
+  for(k in 1:length(nextSet)){ #loop over the options in nextSet
+    if(length(set)==0){         #if no existing options
+      vals[k] = measure(data[,nextSet[k]]) 
+    } else {                    #if existing options
+      vals[k] = measure(data[,c(set,nextSet[k])])
+    }
+  }
+  vals
+}
+
+evalFull = function(fullSet,data,origSet=numeric(0),measure=measReach){
+  curSet = origSet; #the current set of included options
+  remSet = fullSet[!(fullSet%in%origSet)]; #the remaining set of options to consider
+  K = length(remSet)
+  optVals = numeric(K); #create storage for the optimal values (optVals)
+  ordSet = numeric(K); #create storage for ordered set
+  for(i in 1:K){          #loop over the remaining set consider
+    tmpVals = evalNext(remSet,curSet,data,measure); #calculate vector of next evaluations
+    k = which.max(tmpVals) #pick the option that gives max measure, note will pick first case if a tie!
+    optVals[i] = tmpVals[k] #add optimal value
+    ordSet[i] = remSet[k]   #add index of option that creates optimal value
+    curSet = c(curSet,ordSet[i]); #add optimal next option to current set
+    remSet = remSet[-k];          #delete optimal next option from remaining set
+  }
+  #creaets a "TURF object" containing ordSet, optVals, origSet, origVal, measure, and pnames
+   turf = list(ordSet=ordSet,optVals=optVals,origSet=origSet,origVal=measure(data[,origSet]),measure=measure,pnames=colnames(data))
+  class(turf)="TURF" #makes the list into a TURF object so that can call plot.TURF
+  turf  #return turf
+}
+#creates ggplot barplot for a turf object
+plot.TURF=function(turf,...){
+  if(class(turf)!="TURF"){
+    cat("Object not a turf.")
+  } else {
+    df = with(turf,data.frame(vals = c(origVal,optVals),titles=paste(0:length(ordSet),c("Original",pnames[ordSet]),sep=":")))
+    #with(turf,barplot(c(origVal,optVals),names.arg=c("Original",pnames[ordSet])))
+    dodge = position_dodge(width=.75); ##to form constant dimensions positioning for all geom's
+    gp = ggplot(df,aes(y=vals,x=titles))
+    gp + geom_bar(position=dodge,stat="identity",col=1,fill=4,width=.75)
+  }
+}
+
+####### clean data ######
+res <- read.csv("~/Desktop/design/hm2/survResponses.csv")
+for (i in 15:37){
+    res[,i][which(res[,i] == '2')] <- 'a'
+    res[,i][which(res[,i] == '1')] <- 'a'
+    res[,i][which(res[,i] == '0')] <- 'b'
+    res[,i][which(res[,i] == 'a')] <- '0'
+    res[,i][which(res[,i] == 'b')] <- '1'
+    
+}
+
+####### compelete responses #####
+res = res[res$V10 == 1,]
+##### less than 30 mins and more than 1 mins responses #####
+res$time = difftime(res$V9,res$V8,units=c('mins'))
+resshorttime = res[res$time < 30 ,]
+resshorttime = resshorttime[resshorttime$time > 1 ,]
+##### people who often buy greek yorgurt #######
+greekshorttime = resshorttime[resshorttime$Q2_1 >= 50,]
+
+##### greek yogurt flavors ######
+Purch3 =greekshorttime[,15:37]
+###### delete  NA rows which only contain NAs #####
+Purch4<-Purch3[-which(apply(Purch3,1,function(x) all(is.na(x)))),]
+##### set other NAs to 0 #######
+Purch4[is.na(Purch4)]= 0
+##### rename the flavors ########
+names(Purch4)=c("Almond", "Banana", "Black Cherry", "Blueberry", "Caramel", "Chai", "Chocolate", "Cinnamon", "Coconut", "Honey", "Key Lime Pie", "Lemon", "Mango", "Mapel", "Peach", "Pineapple", "Plain", "Pomegranate", "Raspberry", "Strawberry", "StrawBan", "Vanilla", "VaniBan")
+##### TURF #########
+turf2 = evalFull(c(1:23),Purch4,c(4,20,15,22,17,10))
+plot(turf2)
+
+```
+From TURF analysis, we can find that for all type of yogurt, it is best to launch pineapple, black cherry and lemon flavor. While for only Greek yogurt, it is best to launch black cherry and lemon flavor.
+
+# what's more, we further did a family size analysis to determine what size of yogurt combo the brand should launch using the surveys data. we found out that in most occasions, the families sizes are 4-5, so maybe besides separate packing, the brand can also launch the 4-5 packing combo.
+
+select Flavor1, sum(Sales),FSBin
+from survItemSales s join itemsAttributes i on s.`Item.Num` = i.`Item.Num` join 
+hshldDemograph h on s.`Household.Num` = h.`Household.Num`
+where Flavor1 = 'raspberry' or Flavor1 = 'black cherry' or Flavor1 = 'pineapple' or Flavor1 = 'lemon'
+group by FSBin, Flavor1;
+
